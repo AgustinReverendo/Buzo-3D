@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualizador de Buzo 3D</title>
+  
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: sans-serif; background-color: #f0f0f0; }
+    #root { width: 100%; height: 100%; }
+
+    /* Panel de control flotante */
+    .ui-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 20px;
+      border-radius: 12px;
+      z-index: 100;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      backdrop-filter: blur(5px);
+      width: 250px;
+    }
+
+    .ui-panel h3 { margin-top: 0; margin-bottom: 15px; font-size: 1.2rem; color: #333; }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    input[type="color"] {
+      border: none;
+      width: 40px;
+      height: 25px;
+      padding: 0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .btn-group { display: flex; gap: 5px; margin-bottom: 15px; }
+    
+    button {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      background: white;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    
+    button.active { background: #333; color: white; border-color: #333; }
+    
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: #555;
+    }
+  </style>
+
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.13.0",
+        "@react-three/drei": "https://esm.sh/@react-three/drei@9.77.0",
+        "valtio": "https://esm.sh/valtio@1.10.3",
+        "three": "https://esm.sh/three@0.153.0"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import React, { Suspense } from 'react';
+    import ReactDOM from 'react-dom/client';
+    import { Canvas } from '@react-three/fiber';
+    import { OrbitControls, useGLTF, Stage, ContactShadows, Environment } from '@react-three/drei';
+    import { proxy, useSnapshot } from 'valtio';
+
+    // --- ESTADO GLOBAL ---
+    const state = proxy({
+      items: {
+        mat_body: "#3344ff",    // Color inicial Cuerpo
+        mat_sleeves: "#ffffff", // Color inicial Mangas
+        mat_hood: "#3344ff",    // Color inicial Capucha
+        mat_acc: "#000000",     // Color inicial Cordones/Bordes
+      },
+      materialType: 'cotton', // 'cotton' (algodón) o 'synthetic' (sintético)
+      autoRotate: false,
+    });
+
+    // --- COMPONENTE DEL MODELO 3D ---
+    function HoodieModel() {
+      const snap = useSnapshot(state);
+      
+      // ¡ATENCIÓN! REEMPLAZA LA SIGUIENTE LÍNEA CON TU LINK RAW DE GITHUB
+      const gltfUrl = 'https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/hoodie/model.gltf';
+      
+      const { nodes, materials } = useGLTF(gltfUrl);
+
+      // Define las propiedades del material según el tipo seleccionado
+      const materialProps = {
+        roughness: snap.materialType === 'cotton' ? 0.8 : 0.2, // Más rugoso si es algodón
+        metalness: snap.materialType === 'cotton' ? 0.0 : 0.3, // Un poco metálico si es sintético
+        envMapIntensity: snap.materialType === 'cotton' ? 0.5 : 1.5, // Brillo
+      };
+
+      return (
+        <group dispose={null}>
+          {/* Asegúrate que los nombres 'Cuerpo', 'Mangas', etc., coincidan con tu archivo de Blender */}
+          <mesh geometry={nodes.Cuerpo?.geometry} material={materials.mat_body} material-color={snap.items.mat_body} {...materialProps} />
+          <mesh geometry={nodes.Mangas?.geometry} material={materials.mat_sleeves} material-color={snap.items.mat_sleeves} {...materialProps} />
+          <mesh geometry={nodes.Capucha?.geometry} material={materials.mat_hood} material-color={snap.items.mat_hood} {...materialProps} />
+          <mesh geometry={nodes.Accesorios?.geometry} material={materials.mat_acc} material-color={snap.items.mat_acc} {...materialProps} />
+        </group>
+      );
+    }
+
+    // --- COMPONENTE DE LA INTERFAZ DE USUARIO (UI) ---
+    function Interface() {
+      const snap = useSnapshot(state);
+      
+      // Función auxiliar para crear los selectores de color
+      const ColorPicker = ({ label, partId }) => (
+        <div className="control-row">
+          <label>{label}</label>
+          <input type="color" value={snap.items[partId]} onChange={(e) => (state.items[partId] = e.target.value)} />
+        </div>
+      );
+
+      return (
+        <div className="ui-panel">
+          <h3>Personalizador</h3>
+          
+          <div className="control-group">
+            <ColorPicker label="Cuerpo" partId="mat_body" />
+            <ColorPicker label="Mangas" partId="mat_sleeves" />
+            <ColorPicker label="Capucha" partId="mat_hood" />
+            <ColorPicker label="Cordones" partId="mat_acc" />
+          </div>
+
+          <div className="control-group">
+            <div className="control-row" style={{marginBottom: '5px'}}>Material</div>
+            <div className="btn-group">
+              <button className={snap.materialType === 'cotton' ? 'active' : ''} onClick={() => state.materialType = 'cotton'}>Algodón</button>
+              <button className={snap.materialType === 'synthetic' ? 'active' : ''} onClick={() => state.materialType = 'synthetic'}>Sintético</button>
+            </div>
+          </div>
+          
+          <label className="checkbox-label">
+            <input type="checkbox" checked={snap.autoRotate} onChange={() => state.autoRotate = !state.autoRotate} /> 
+            Rotación automática
+          </label>
+        </div>
+      );
+    }
+
+    // --- APP PRINCIPAL ---
+    function App() {
+      const snap = useSnapshot(state);
+      return (
+        <>
+          <Interface />
+          <Canvas shadows camera={{ position: [0, 0, 2.5], fov: 50 }}>
+            <color attach="background" args={['#f0f0f0']} />
+            <Suspense fallback={null}>
+              <Stage environment="city" intensity={0.5} adjustCamera={false}>
+                <HoodieModel />
+              </Stage>
+              <Environment preset="city" />
+            </Suspense>
+            <OrbitControls autoRotate={snap.autoRotate} enablePan={false} minDistance={1.5} maxDistance={5} minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI / 1.5} />
+            <ContactShadows position={[0, -0.8, 0]} opacity={0.4} scale={5} blur={2} />
+          </Canvas>
+        </>
+      );
+    }
+
+    // Renderizar la App en el div 'root'
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
